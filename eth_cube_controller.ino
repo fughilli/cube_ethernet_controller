@@ -15,6 +15,7 @@
 #include <LiquidCrystal_PCF8574.h>
 #include "pca9555.h"
 #include "backlight_command.h"
+#include "enum_command.h"
 
 const uint8_t INT_PIN = 2; // GP2 on RP2040
 
@@ -48,20 +49,36 @@ LiquidCrystal_PCF8574 lcd(0x27);
 
 PCA9555 pca;
 BacklightCommand backlight_command(pca);
+EnumCommand enum_command(pca, &Serial2);
 
 // Create commands
 LedCommand led_command(leds, NUM_PIXELS);
 ConfigCommand config_command(NUM_PIXELS);
 ReconfCommand reconf_command(ch9121);
 LcdCommand lcd_command(lcd, LCD_WIDTH, LCD_HEIGHT);
-Command* commands[] = {&led_command, &config_command, &reconf_command, &lcd_command, &backlight_command};
+Command* commands[] = {&led_command, &config_command, &reconf_command, &lcd_command, &backlight_command, &enum_command};
 CommandProcessor command_processor(commands);
 
 volatile bool button_int_flag = false;
 uint8_t last_button_state = 0;
 
+// Debug/boot message state
+uint8_t boot_dip = 0;
+uint16_t enum_count = 0;
+bool debug_message_enabled = true;
+
 void onButtonInt() {
   button_int_flag = true;
+}
+
+void show_boot_message() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Controller ");
+  lcd.print(boot_dip);
+  lcd.setCursor(0, 1);
+  lcd.print("Enum ");
+  lcd.print(enum_count);
 }
 
 void setup() {
@@ -91,8 +108,8 @@ void setup() {
   pca.begin();
 
   // Read DIP and set CH9121 IP
-  uint8_t dip = pca.readDIP();
-  config.local_ip[3] = 50 + (dip & 0x0F);
+  boot_dip = pca.readDIP();
+  config.local_ip[3] = 50 + (boot_dip & 0x0F);
   ch9121 = CH9121(&Serial2, config, 19, 18); // re-init with new config
 
   Serial.println("Starting CH9121 config...");
@@ -108,6 +125,20 @@ void setup() {
   pinMode(INT_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(INT_PIN), onButtonInt, FALLING);
   last_button_state = pca.readButtons();
+
+  enum_count = 0;
+  debug_message_enabled = true;
+  show_boot_message();
+
+  enum_command.on_enum = []() {
+    if (debug_message_enabled) {
+      ++enum_count;
+      show_boot_message();
+    }
+  };
+  lcd_command.on_clear = []() {
+    debug_message_enabled = false;
+  };
 }
 
 void loop() {

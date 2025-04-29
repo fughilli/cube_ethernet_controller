@@ -2,6 +2,7 @@
 
 #include <LiquidCrystal_PCF8574.h>
 
+#include <functional>
 #include <string_view>
 
 #include "command.h"
@@ -12,6 +13,8 @@ class LcdCommand : public Command {
       : Command("lcd"), lcd_(lcd), width_(width), height_(height) {}
 
   void process(std::string_view args) override;
+
+  std::function<void()> on_clear;
 
  private:
   LiquidCrystal_PCF8574& lcd_;

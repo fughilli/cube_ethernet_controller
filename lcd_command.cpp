@@ -1,5 +1,6 @@
 #include "lcd_command.h"
 #include <cstdlib>
+#include <cstring>
 
 bool LcdCommand::parseCoordinates(const char* str, uint8_t& x, uint8_t& y) {
     // Find the first colon
@@ -25,6 +26,11 @@ bool LcdCommand::parseCoordinates(const char* str, uint8_t& x, uint8_t& y) {
 }
 
 void LcdCommand::process(std::string_view args) {
+    if (args == "clear") {
+        lcd_.clear();
+        if (on_clear) on_clear();
+        return;
+    }
     uint8_t x, y;
     if (!parseCoordinates(args.data(), x, y)) {
         return;
@@ -37,4 +43,4 @@ void LcdCommand::process(std::string_view args) {
     // Set cursor position and print text
     lcd_.setCursor(x, y);
     lcd_.print(text_start);
-} 
+}
