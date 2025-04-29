@@ -13,17 +13,23 @@
 #include "lcd_command.h"
 #include <Wire.h>
 #include <LiquidCrystal_PCF8574.h>
+#include "pca9555.h"
+#include "backlight_command.h"
 
-const CH9121Config config = {
+const uint8_t INT_PIN = 2; // GP2 on RP2040
+
+const CH9121Config default_config = {
     .gateway = {192, 168, 0, 1},
     .subnet_mask = {255, 255, 255, 0},
-    .local_ip = {192, 168, 0, 51},
+    .local_ip = {192, 168, 0, 51}, // will be overwritten by DIP
     .target_ip = {192, 168, 0, 1},
     .local_port = 5000,
     .target_port = 5000,
     .baud_rate = 921600,
     .mode = 0x02,
 };
+
+CH9121Config config = default_config;
 
 // Create CH9121 instance with pin numbers
 CH9121 ch9121(&Serial2, config, 19, 18);
@@ -40,13 +46,23 @@ const uint8_t LCD_HEIGHT = 4;
 // Initialize LCD display
 LiquidCrystal_PCF8574 lcd(0x27);
 
+PCA9555 pca;
+BacklightCommand backlight_command(pca);
+
 // Create commands
 LedCommand led_command(leds, NUM_PIXELS);
 ConfigCommand config_command(NUM_PIXELS);
 ReconfCommand reconf_command(ch9121);
 LcdCommand lcd_command(lcd, LCD_WIDTH, LCD_HEIGHT);
-Command* commands[] = {&led_command, &config_command, &reconf_command, &lcd_command};
+Command* commands[] = {&led_command, &config_command, &reconf_command, &lcd_command, &backlight_command};
 CommandProcessor command_processor(commands);
+
+volatile bool button_int_flag = false;
+uint8_t last_button_state = 0;
+
+void onButtonInt() {
+  button_int_flag = true;
+}
 
 void setup() {
   Serial.begin(921600);
@@ -71,6 +87,14 @@ void setup() {
   Serial2.setRX(21);
   Serial2.setFIFOSize(1024);
 
+  // PCA9555 setup
+  pca.begin();
+
+  // Read DIP and set CH9121 IP
+  uint8_t dip = pca.readDIP();
+  config.local_ip[3] = 50 + (dip & 0x0F);
+  ch9121 = CH9121(&Serial2, config, 19, 18); // re-init with new config
+
   Serial.println("Starting CH9121 config...");
   ch9121.Begin();
   ch9121.Configure();
@@ -79,6 +103,11 @@ void setup() {
   // Clear LCD and show ready message
   lcd.clear();
   lcd.print("Ready");
+
+  // INT pin setup
+  pinMode(INT_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(INT_PIN), onButtonInt, FALLING);
+  last_button_state = pca.readButtons();
 }
 
 void loop() {
@@ -86,5 +115,18 @@ void loop() {
   if (Serial2.available()) {
     char value = Serial2.read();
     command_processor.process_char(value);
+  }
+  if (button_int_flag) {
+    button_int_flag = false;
+    uint8_t state = pca.readButtons();
+    if (state != last_button_state) {
+      Serial.print("{\"buttons\":[");
+      for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
+        Serial.print((state >> i) & 1);
+        if (i < PCA9555::NUM_BUTTONS - 1) Serial.print(",");
+      }
+      Serial.println("]}");
+      last_button_state = state;
+    }
   }
 }
