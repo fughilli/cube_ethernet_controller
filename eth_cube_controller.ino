@@ -10,6 +10,9 @@
 #include "config_command.h"
 #include "led_command.h"
 #include "reconf_command.h"
+#include "lcd_command.h"
+#include <Wire.h>
+#include <LiquidCrystal_PCF8574.h>
 
 const CH9121Config config = {
     .gateway = {192, 168, 0, 1},
@@ -30,11 +33,19 @@ CH9121 ch9121(&Serial2, config, 19, 18);
 
 CRGB leds[NUM_PIXELS];
 
+// LCD dimensions
+const uint8_t LCD_WIDTH = 20;
+const uint8_t LCD_HEIGHT = 4;
+
+// Initialize LCD display
+LiquidCrystal_PCF8574 lcd(0x27);
+
 // Create commands
 LedCommand led_command(leds, NUM_PIXELS);
 ConfigCommand config_command(NUM_PIXELS);
 ReconfCommand reconf_command(ch9121);
-Command* commands[] = {&led_command, &config_command, &reconf_command};
+LcdCommand lcd_command(lcd, LCD_WIDTH, LCD_HEIGHT);
+Command* commands[] = {&led_command, &config_command, &reconf_command, &lcd_command};
 CommandProcessor command_processor(commands);
 
 void setup() {
@@ -46,6 +57,15 @@ void setup() {
   Serial.println("Initializing...");
 
   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_PIXELS);
+  
+  // Initialize I2C and LCD
+  Wire.begin();
+  lcd.begin(LCD_WIDTH, LCD_HEIGHT);
+  lcd.setBacklight(255);
+  lcd.home();
+  lcd.clear();
+  lcd.print("Initializing...");
+  
   // put your setup code here, to run once:
   Serial2.setTX(20);
   Serial2.setRX(21);
@@ -55,6 +75,10 @@ void setup() {
   ch9121.Begin();
   ch9121.Configure();
   Serial.println("Finished CH9121 config");
+  
+  // Clear LCD and show ready message
+  lcd.clear();
+  lcd.print("Ready");
 }
 
 void loop() {
