@@ -20,7 +20,7 @@ void CommandProcessor::process_command(std::string_view line) {
   // Find matching command by checking prefix substring
   for (Command* cmd : commands_) {
     std::string_view cmd_prefix = cmd->prefix();
-    if (line.size() >= cmd_prefix.size() && 
+    if (line.size() >= cmd_prefix.size() &&
         line.substr(0, cmd_prefix.size()) == cmd_prefix) {
       // Found matching command, extract args after prefix
       std::string_view args;

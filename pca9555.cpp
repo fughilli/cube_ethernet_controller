@@ -86,4 +86,4 @@ uint8_t PCA9555::readRegister(uint8_t reg) {
         return wire_.read();
     }
     return 0xFF;
-} 
+}

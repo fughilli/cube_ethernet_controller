@@ -16,4 +16,4 @@ void BacklightCommand::process(std::string_view args) {
         start = next + 1;
     }
     pca_.setAllLeds(states);
-} 
+}

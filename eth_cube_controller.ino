@@ -90,7 +90,7 @@ void setup() {
   Serial.println("Initializing...");
 
   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_PIXELS);
-  
+
   // Initialize I2C and LCD
   Wire.begin();
   lcd.begin(LCD_WIDTH, LCD_HEIGHT);
@@ -98,7 +98,7 @@ void setup() {
   lcd.home();
   lcd.clear();
   lcd.print("Initializing...");
-  
+
   // put your setup code here, to run once:
   Serial2.setTX(20);
   Serial2.setRX(21);
@@ -123,7 +123,7 @@ void setup() {
   ch9121.Configure();
   delay(1000); // Give more time for configuration to take effect
   Serial.println("Finished CH9121 config");
-  
+
   // Clear LCD and show ready message
   lcd.clear();
   lcd.print("Ready");

@@ -7,4 +7,4 @@ void EnumCommand::process(std::string_view args) {
     uart_->print("{\"type\":\"controller\",\"dip\":");
     uart_->print(dip);
     uart_->println("}");
-} 
+}
