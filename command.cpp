@@ -17,22 +17,30 @@ void CommandProcessor::process_char(char c) {
 }
 
 void CommandProcessor::process_command(std::string_view line) {
-  // Find the first space to separate command from args
-  size_t space_pos = line.find(' ');
-  std::string_view prefix = line.substr(0, space_pos);
-  std::string_view args = space_pos != std::string_view::npos
-                              ? line.substr(space_pos + 1)
-                              : std::string_view();
-
-  // Find matching command
+  // Find matching command by checking prefix substring
   for (Command* cmd : commands_) {
-    if (cmd->prefix() == prefix) {
+    std::string_view cmd_prefix = cmd->prefix();
+    if (line.size() >= cmd_prefix.size() && 
+        line.substr(0, cmd_prefix.size()) == cmd_prefix) {
+      // Found matching command, extract args after prefix
+      std::string_view args;
+      if (line.size() > cmd_prefix.size()) {
+        if (line[cmd_prefix.size()] == ':') {
+          args = line.substr(cmd_prefix.size() + 1);
+        } else {
+          // Prefix matched but not at a word boundary
+          continue;
+        }
+      }
       cmd->process(args);
       return;
     }
   }
 
   // No matching command found
-  Serial.print("Unknown command: ");
-  Serial.println(prefix.data());
+  Serial.write("Unknown command: ", 16);
+  for (char c : line) {
+    Serial.write(c);
+  }
+  Serial.write('\n');
 }

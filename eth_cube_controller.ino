@@ -112,9 +112,16 @@ void setup() {
   config.local_ip[3] = 50 + (boot_dip & 0x0F);
   ch9121 = CH9121(&Serial2, config, 19, 18); // re-init with new config
 
+  Serial.print("DIP switch value: ");
+  Serial.println(boot_dip);
+  Serial.print("Setting IP to: 192.168.0.");
+  Serial.println(config.local_ip[3]);
+
   Serial.println("Starting CH9121 config...");
   ch9121.Begin();
+  delay(1000); // Give more time for hardware initialization
   ch9121.Configure();
+  delay(1000); // Give more time for configuration to take effect
   Serial.println("Finished CH9121 config");
   
   // Clear LCD and show ready message
@@ -134,6 +141,8 @@ void setup() {
     if (debug_message_enabled) {
       ++enum_count;
       show_boot_message();
+      Serial.print("Enumeration request received. Count: ");
+      Serial.println(enum_count);
     }
   };
   lcd_command.on_clear = []() {
