@@ -24,10 +24,10 @@ const CH9121Config default_config = {
     .subnet_mask = {255, 255, 255, 0},
     .local_ip = {192, 168, 0, 51}, // will be overwritten by DIP
     .target_ip = {192, 168, 0, 1},
-    .local_port = 5000,
-    .target_port = 5000,
+    .local_port = 51333,
+    .target_port = 51334,
     .baud_rate = 921600,
-    .mode = 0x02,
+    .mode = 0x00, // TCP Server mode (was 0x02 for UDP)
 };
 
 CH9121Config config = default_config;

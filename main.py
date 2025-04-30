@@ -1,11 +1,11 @@
 import asyncio
 import random
-import time
 from control_port import ControlPort
+import time
 
 
 async def generate_random_color():
-    hue = (time.time() / 10) % 1  # Random hue between 0 and 1
+    hue = (time.time() / 10) % 1
     # Convert HSV to RGB with S=1, V=0.25 (64/255)
     h = hue * 6
     c = 16  # Intensity/Value
@@ -32,8 +32,8 @@ async def main():
     controllers = await cp.enumerate()
     for ip, ctrl in controllers.items():
         print(f"Controller at {ip} DIP={ctrl.dip}")
-        ctrl.set_lcd(0, 0, f"Hello from #{ctrl.dip}")
-        ctrl.set_backlights([1, 0, 1, 0, 1, 0])
+        await ctrl.set_lcd(0, 0, f"Hello from #{ctrl.dip}")
+        await ctrl.set_backlights([1, 0, 1, 0, 1, 0])
         ctrl.register_button_callback(lambda buttons, ip=ip: print(f"{ip} buttons: {buttons}"))
 
     # Keep the program running and update LED colors every second
@@ -41,7 +41,7 @@ async def main():
         for ip, ctrl in controllers.items():
             color = await generate_random_color()
             print(f"Setting LED 0 on {ip} to RGB{color}")
-            ctrl.set_leds([color])
+            await ctrl.set_leds([color])
         await asyncio.sleep(1 / 60)
 
 

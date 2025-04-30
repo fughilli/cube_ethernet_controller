@@ -2,10 +2,14 @@ import asyncio
 import socket
 import json
 import base64
+import subprocess
+import platform
 
-CONTROLLER_PORT = 5000
+CONTROLLER_PORT = 51333
 ENUM_COMMAND = b"enum\n"
 BUTTON_TIMEOUT = 0.1
+CONNECTION_TIMEOUT = 2.0
+PING_TIMEOUT = 1.0  # seconds
 
 
 class ControllerState:
@@ -15,17 +19,43 @@ class ControllerState:
         self.loop = loop
         self.button_callback = None
         self._listen_task = None
+        self._socket = None
+        self._connected = False
 
-    def set_lcd(self, x, y, text):
+    async def connect(self):
+        if self._connected:
+            return True
+        try:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._socket.settimeout(CONNECTION_TIMEOUT)
+            self._socket.connect((self.ip, CONTROLLER_PORT))
+            self._socket.setblocking(False)
+            self._connected = True
+            return True
+        except Exception as e:
+            print(f"Failed to connect to {self.ip}: {e}")
+            self._connected = False
+            return False
+
+    def disconnect(self):
+        if self._socket:
+            try:
+                self._socket.close()
+            except:
+                pass
+        self._socket = None
+        self._connected = False
+
+    async def set_lcd(self, x, y, text):
         msg = f"lcd:{x}:{y}:{text}\n".encode()
-        self._send(msg)
+        await self._send(msg)
 
-    def set_backlights(self, states):
+    async def set_backlights(self, states):
         payload = ":".join(["1" if s else "0" for s in states])
         msg = f"backlight:{payload}\n".encode()
-        self._send(msg)
+        await self._send(msg)
 
-    def set_leds(self, rgb_values):
+    async def set_leds(self, rgb_values):
         """Set LED colors from a list of (r,g,b) tuples."""
         # Create payload: [num_leds (16-bit LE), r0,g0,b0, r1,g1,b1, ...]
         num_leds = len(rgb_values)
@@ -33,33 +63,42 @@ class ControllerState:
         for r, g, b in rgb_values:
             payload.extend([r & 0xFF, g & 0xFF, b & 0xFF])
         msg = f"led:{base64.b64encode(bytes(payload)).decode()}\n".encode()
-        self._send(msg)
+        await self._send(msg)
 
     def register_button_callback(self, callback):
         self.button_callback = callback
         if not self._listen_task:
             self._listen_task = self.loop.create_task(self._listen_buttons())
 
-    def _send(self, msg):
-        print(f"Sending {msg} to {self.ip}:{CONTROLLER_PORT}")
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(msg, (self.ip, CONTROLLER_PORT))
-        sock.close()
+    async def _send(self, msg):
+        if not self._connected:
+            if not await self.connect():
+                return
+        try:
+            await self.loop.sock_sendall(self._socket, msg)
+        except Exception as e:
+            print(f"Error sending to {self.ip}: {e}")
+            self.disconnect()
 
     async def _listen_buttons(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(("", CONTROLLER_PORT))
-        sock.setblocking(False)
         while True:
+            if not self._connected:
+                if not await self.connect():
+                    await asyncio.sleep(BUTTON_TIMEOUT)
+                    continue
+
             try:
-                data, addr = await self.loop.sock_recvfrom(sock, 1024)
-                if addr[0] == self.ip:
-                    try:
-                        msg = json.loads(data.decode())
-                        if "buttons" in msg and self.button_callback:
-                            self.button_callback(msg["buttons"])
-                    except Exception:
-                        pass
+                data = await self.loop.sock_recv(self._socket, 1024)
+                if not data:  # Connection closed
+                    self.disconnect()
+                    continue
+
+                try:
+                    msg = json.loads(data.decode())
+                    if "buttons" in msg and self.button_callback:
+                        self.button_callback(msg["buttons"])
+                except Exception as e:
+                    print(f"Error processing button message: {e}")
             except Exception:
                 await asyncio.sleep(BUTTON_TIMEOUT)
 
@@ -73,15 +112,75 @@ class ControlPort:
         self.loop = loop or asyncio.get_event_loop()
         self.controllers = {}
 
-    async def enumerate(self, timeout=2.0):
+    async def ping_host(self, ip):
+        """Ping a host and return True if it responds."""
+        param = "-n" if platform.system().lower() == "windows" else "-c"
+        command = ["ping", param, "1", "-W", str(int(PING_TIMEOUT * 1000)), ip]
+        try:
+            result = await self.loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    command, capture_output=True, text=True, timeout=PING_TIMEOUT
+                ),
+            )
+            return result.returncode == 0
+        except Exception as e:
+            print(f"Error pinging {ip}: {e}")
+            return False
+
+    async def check_port(self, ip):
+        """Check if the port is open using a socket connection."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1.0)  # Short timeout for port check
+        try:
+            result = await self.loop.sock_connect(sock, (ip, self.port))
+            print(f"Port {self.port} is open on {ip}")
+            return True
+        except Exception as e:
+            print(f"Port {self.port} is closed on {ip}: {e}")
+            return False
+        finally:
+            sock.close()
+
+    async def discover_hosts(self):
+        """Discover reachable hosts using ICMP ping and port check."""
+        print("Discovering reachable hosts...")
         tasks = []
         for i in range(self.start, self.end + 1):
             ip = f"{self.base_ip}{i}"
+            tasks.append(self.ping_host(ip))
+
+        results = await asyncio.gather(*tasks)
+        reachable_ips = []
+        for i, is_reachable in enumerate(results):
+            ip = f"{self.base_ip}{i + self.start}"
+            if is_reachable:
+                print(f"Host {ip} is reachable")
+                # Check if the port is open
+                if await self.check_port(ip):
+                    reachable_ips.append(ip)
+            else:
+                print(f"Host {ip} is not reachable")
+        return reachable_ips
+
+    async def enumerate(self, timeout=2.0):
+        # First discover reachable hosts
+        reachable_ips = await self.discover_hosts()
+        if not reachable_ips:
+            print("No reachable hosts found")
+            return self.controllers
+
+        # Then try to enumerate only the reachable hosts
+        tasks = []
+        for ip in reachable_ips:
             tasks.append(self._query_controller(ip, timeout / 2))
+
         try:
             results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
         except asyncio.TimeoutError:
+            print("Global enumeration timeout")
             results = []
+
         for result in results:
             if result:
                 ip, dip = result
@@ -89,37 +188,40 @@ class ControlPort:
         return self.controllers
 
     async def _query_controller(self, ip, timeout):
-        loop = self.loop
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setblocking(False)
+        print(f"\nAttempting to enumerate {ip}:{self.port}")
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
         try:
-            print(f"Sending enum command to {ip}:{self.port}")
-            sock.sendto(ENUM_COMMAND, (ip, self.port))
-            fut = loop.create_future()
+            print(f"1. Connecting to {ip}:{self.port}")
+            await self.loop.sock_connect(sock, (ip, self.port))
+            print("2. Connection successful, setting non-blocking mode")
+            sock.setblocking(False)
 
-            def on_response():
-                try:
-                    data, addr = sock.recvfrom(1024)
-                    print(f"Received response from {addr}: {data}")
-                    if addr[0] == ip:
-                        msg = json.loads(data.decode())
-                        if msg.get("type") == "controller" and "dip" in msg:
-                            fut.set_result((ip, msg["dip"]))
-                        else:
-                            print(f"Invalid response format from {ip}: {msg}")
-                            fut.set_result(None)
-                except Exception as e:
-                    print(f"Error processing response from {ip}: {e}")
-                    fut.set_result(None)
+            print("3. Sending enum command")
+            await self.loop.sock_sendall(sock, ENUM_COMMAND)
+            print("4. Command sent, waiting for response")
 
-            loop.add_reader(sock.fileno(), on_response)
-            try:
-                await asyncio.wait_for(fut, timeout)
-                return fut.result()
-            except asyncio.TimeoutError:
-                print(f"Enumeration timeout for {ip}")
+            data = await self.loop.sock_recv(sock, 1024)
+            print(f"5. Received response: {data}")
+
+            msg = json.loads(data.decode())
+            if msg.get("type") == "controller" and "dip" in msg:
+                print(f"6. Successfully enumerated controller with DIP={msg['dip']}")
+                return (ip, msg["dip"])
+            else:
+                print(f"6. Invalid response format: {msg}")
                 return None
-            finally:
-                loop.remove_reader(sock.fileno())
+        except socket.timeout:
+            print(f"Timeout while communicating with {ip}")
+            return None
+        except ConnectionRefusedError:
+            print(f"Connection refused by {ip}")
+            return None
+        except ConnectionResetError:
+            print(f"Connection reset by {ip}")
+            return None
+        except Exception as e:
+            print(f"Error communicating with {ip}: {type(e).__name__}: {e}")
+            return None
         finally:
             sock.close()
