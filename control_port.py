@@ -21,6 +21,7 @@ class ControllerState:
         self._listen_task = None
         self._socket = None
         self._connected = False
+        self._receive_buffer = b""
 
     async def connect(self):
         if self._connected:
@@ -28,9 +29,10 @@ class ControllerState:
         try:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._socket.settimeout(CONNECTION_TIMEOUT)
-            self._socket.connect((self.ip, CONTROLLER_PORT))
+            await self.loop.sock_connect(self._socket, (self.ip, CONTROLLER_PORT))
             self._socket.setblocking(False)
             self._connected = True
+            self._receive_buffer = b""  # Clear buffer on new connection
             return True
         except Exception as e:
             print(f"Failed to connect to {self.ip}: {e}")
@@ -45,6 +47,7 @@ class ControllerState:
                 pass
         self._socket = None
         self._connected = False
+        self._receive_buffer = b""  # Clear buffer on disconnect
 
     async def set_lcd(self, x, y, text):
         msg = f"lcd:{x}:{y}:{text}\n".encode()
@@ -88,24 +91,48 @@ class ControllerState:
         while True:
             if not self._connected:
                 if not await self.connect():
-                    await asyncio.sleep(BUTTON_TIMEOUT)
+                    await asyncio.sleep(BUTTON_TIMEOUT)  # Wait before retrying connection
                     continue
 
             try:
-                data = await self.loop.sock_recv(self._socket, 1024)
-                print(f"Received data: {data}")
-                if not data:  # Connection closed
+                data = await self.loop.sock_recv(self._socket, 4096)  # Read up to 4KB
+                if not data:  # Connection closed by remote host
+                    print(f"Connection closed by {self.ip}")
                     self.disconnect()
                     continue
 
-                try:
-                    msg = json.loads(data.decode())
-                    if "buttons" in msg and self.button_callback:
-                        self.button_callback(msg["buttons"])
-                except Exception as e:
-                    print(f"Error processing button message: {e}")
-            except Exception:
-                await asyncio.sleep(BUTTON_TIMEOUT)
+                self._receive_buffer += data
+
+                # Process all complete messages in the buffer
+                while b"\n" in self._receive_buffer:
+                    message, self._receive_buffer = self._receive_buffer.split(b"\n", 1)
+                    try:
+                        msg_str = message.decode().strip()
+                        if not msg_str:  # Skip empty lines
+                            continue
+                        msg = json.loads(msg_str)
+                        if "buttons" in msg and self.button_callback:
+                            self.button_callback(msg["buttons"])
+                    except json.JSONDecodeError as e:
+                        print(f"JSON Decode Error: {e} - Message: {message}")
+                    except UnicodeDecodeError as e:
+                        print(f"Unicode Decode Error: {e} - Message: {message}")
+                    except Exception as e:
+                        print(
+                            f"Error processing button message: {type(e).__name__}: {e} - Message: {message}"
+                        )
+
+            except ConnectionResetError:
+                print(f"Connection reset by {self.ip}")
+                self.disconnect()
+            except socket.timeout:
+                print(f"Socket timeout for {self.ip}")
+                # Timeout on receive usually means no data, which is fine. Continue listening.
+                pass
+            except Exception as e:
+                print(f"Error listening for buttons from {self.ip}: {type(e).__name__}: {e}")
+                self.disconnect()  # Disconnect on other errors
+                await asyncio.sleep(1)  # Wait a bit before trying to reconnect
 
 
 class ControlPort:
