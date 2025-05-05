@@ -13,7 +13,7 @@ void PCA9555::begin() {
     // IO1_0:5 = BUTTON inputs (1=input), IO1_4:7 = DIP inputs (1=input)
     // IO1_6:7 = DIP inputs (1=input)
     writeRegister(REG_CONFIG_0, 0b01010101); // LED_x as output, BUTTON_x as input
-    writeRegister(REG_CONFIG_1, 0b11111010); // LED_4/5 as output, BUTTON_4/5 and DIP as input
+    writeRegister(REG_CONFIG_1, 0b11110101); // LED_4/5 as output, BUTTON_4/5 and DIP as input
     // Set all LEDs LOW
     led_state_ = 0;
     writeRegister(REG_OUTPUT_0, 0x00);

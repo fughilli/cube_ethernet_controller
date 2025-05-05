@@ -92,7 +92,13 @@ void setup() {
   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_PIXELS);
 
   // Initialize I2C and LCD
+  Wire.setSDA(0);
+  Wire.setSCL(1);
   Wire.begin();
+
+  pinMode(28, OUTPUT);
+  digitalWrite(28, HIGH);
+
   lcd.begin(LCD_WIDTH, LCD_HEIGHT);
   lcd.setBacklight(255);
   lcd.home();
