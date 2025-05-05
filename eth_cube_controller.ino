@@ -112,6 +112,7 @@ void setup() {
   // Initialize I2C and LCD
   Wire.setSDA(0);
   Wire.setSCL(1);
+  Wire.setClock(400000);
   Wire.begin();
 
   pinMode(28, OUTPUT);
