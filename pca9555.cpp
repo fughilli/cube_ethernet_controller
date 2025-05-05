@@ -81,8 +81,18 @@ uint8_t PCA9555::readRegister(uint8_t reg) {
     wire_.write(reg);
     wire_.endTransmission(false);
     wire_.requestFrom(I2C_ADDR, (uint8_t)1);
+    uint8_t value = 0xFF;
     if (wire_.available()) {
-        return wire_.read();
+        value = wire_.read();
     }
-    return 0xFF;
+
+    // Erratum Workaround: After reading input registers (0x00, 0x01),
+    // set the register pointer to a non-input register (e.g., 0x02)
+    // to prevent INT line issues when accessing other I2C slaves.
+    if (reg == REG_INPUT_0 || reg == REG_INPUT_1) {
+        wire_.beginTransmission(I2C_ADDR);
+        wire_.write(REG_OUTPUT_0); // Set pointer to output register 0
+        wire_.endTransmission();
+    }
+    return value;
 }

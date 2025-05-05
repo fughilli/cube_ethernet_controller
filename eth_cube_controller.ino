@@ -72,13 +72,22 @@ void onButtonInt() {
 }
 
 void show_boot_message() {
-  lcd.clear();
+  if (!debug_message_enabled) {
+    return;
+  }
+  uint8_t buttons = pca.readButtons();
   lcd.setCursor(0, 0);
   lcd.print("Controller ");
   lcd.print(boot_dip);
   lcd.setCursor(0, 1);
   lcd.print("Enum ");
   lcd.print(enum_count);
+  lcd.setCursor(0, 2);
+  lcd.print("I/O dbg: [");
+  for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
+    lcd.print((buttons >> i) & 1);
+  }
+  lcd.print("]");
 }
 
 void setup() {
@@ -144,12 +153,10 @@ void setup() {
   show_boot_message();
 
   enum_command.on_enum = []() {
-    if (debug_message_enabled) {
-      ++enum_count;
-      show_boot_message();
-      Serial.print("Enumeration request received. Count: ");
-      Serial.println(enum_count);
-    }
+    ++enum_count;
+    show_boot_message();
+    Serial.print("Enumeration request received. Count: ");
+    Serial.println(enum_count);
   };
   lcd_command.on_clear = []() {
     debug_message_enabled = false;
@@ -162,17 +169,15 @@ void loop() {
     char value = Serial2.read();
     command_processor.process_char(value);
   }
-  if (button_int_flag) {
-    button_int_flag = false;
-    uint8_t state = pca.readButtons();
-    if (state != last_button_state) {
-      Serial.print("{\"buttons\":[");
-      for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
-        Serial.print((state >> i) & 1);
-        if (i < PCA9555::NUM_BUTTONS - 1) Serial.print(",");
-      }
-      Serial.println("]}");
-      last_button_state = state;
+  uint8_t state = pca.readButtons();
+  if (state != last_button_state) {
+    Serial.print("{\"buttons\":[");
+    for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
+      Serial.print((state >> i) & 1);
+      if (i < PCA9555::NUM_BUTTONS - 1) Serial.print(",");
     }
+    Serial.println("]}");
+    last_button_state = state;
+    show_boot_message();
   }
 }

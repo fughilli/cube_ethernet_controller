@@ -17,7 +17,6 @@ class PCA9555 {
 
  private:
   TwoWire& wire_;
-  uint8_t led_state_ = 0;
   void writeRegister(uint8_t reg, uint8_t value);
   uint8_t readRegister(uint8_t reg);
 };
