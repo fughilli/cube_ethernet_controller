@@ -1,6 +1,6 @@
 #include "lcd_command.h"
-#include <cstdlib>
-#include <cstring>
+#include <charconv> // Include for std::from_chars
+#include <system_error> // Include for std::errc
 
 bool LcdCommand::parseCoordinates(const char* str, uint8_t& x, uint8_t& y) {
     // Find the first colon
@@ -31,16 +31,46 @@ void LcdCommand::process(std::string_view args) {
         if (on_clear) on_clear();
         return;
     }
-    uint8_t x, y;
-    if (!parseCoordinates(args.data(), x, y)) {
+
+    // Expected format: "x:y:text"
+
+    // Find the first colon
+    size_t first_colon_pos = args.find(':');
+    if (first_colon_pos == std::string_view::npos) {
+        // Invalid format
         return;
     }
 
-    // Extract the text to display (everything after the second colon)
-    const char* text_start = strchr(strchr(args.data(), ':') + 1, ':') + 1;
-    if (!text_start) return;
+    // Find the second colon
+    size_t second_colon_pos = args.find(':', first_colon_pos + 1);
+    if (second_colon_pos == std::string_view::npos) {
+        // Invalid format
+        return;
+    }
 
-    // Set cursor position and print text
+    // Extract substrings for x, y, and text
+    std::string_view x_sv = args.substr(0, first_colon_pos);
+    std::string_view y_sv = args.substr(first_colon_pos + 1, second_colon_pos - (first_colon_pos + 1));
+    std::string_view text_sv = args.substr(second_colon_pos + 1);
+
+    // Parse x coordinate using std::from_chars
+    uint8_t x;
+    auto x_result = std::from_chars(x_sv.data(), x_sv.data() + x_sv.size(), x);
+    if (x_result.ec != std::errc() || x_result.ptr != x_sv.data() + x_sv.size() || x >= width_) {
+        // Parsing failed, invalid characters found, or out of bounds
+        return;
+    }
+
+    // Parse y coordinate using std::from_chars
+    uint8_t y;
+    auto y_result = std::from_chars(y_sv.data(), y_sv.data() + y_sv.size(), y);
+    if (y_result.ec != std::errc() || y_result.ptr != y_sv.data() + y_sv.size() || y >= height_) {
+        // Parsing failed, invalid characters found, or out of bounds
+        return;
+    }
+
     lcd_.setCursor(x, y);
-    lcd_.print(text_start);
+    for (char c : text_sv) {
+        lcd_.write(c);
+    }
 }

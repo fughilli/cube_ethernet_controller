@@ -126,7 +126,7 @@ void setup() {
   // put your setup code here, to run once:
   Serial2.setTX(20);
   Serial2.setRX(21);
-  Serial2.setFIFOSize(1024);
+  Serial2.setFIFOSize(65536);
 
   // PCA9555 setup
   pca.begin();

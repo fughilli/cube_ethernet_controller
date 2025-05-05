@@ -54,7 +54,8 @@ class ControllerState:
         await self._send(msg)
 
     async def clear_lcd(self):
-        msg = f"lcd:clear\n".encode()
+        """Sends the command to clear the LCD."""
+        msg = b"lcd:clear\n"
         await self._send(msg)
 
     async def set_backlights(self, states):
@@ -82,6 +83,7 @@ class ControllerState:
             if not await self.connect():
                 return
         try:
+            print(f"Sending message to {self.ip}: {msg}")
             await self.loop.sock_sendall(self._socket, msg)
         except Exception as e:
             print(f"Error sending to {self.ip}: {e}")
