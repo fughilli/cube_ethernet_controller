@@ -32,17 +32,21 @@ async def main():
     controllers = await cp.enumerate()
     for ip, ctrl in controllers.items():
         print(f"Controller at {ip} DIP={ctrl.dip}")
+        await ctrl.clear_lcd()
         await ctrl.set_lcd(0, 0, f"Hello from #{ctrl.dip}")
-        await ctrl.set_backlights([1, 0, 1, 0, 1, 0])
+        await ctrl.set_backlights([0, 0, 0, 0, 0, 0])
         ctrl.register_button_callback(lambda buttons, ip=ip: print(f"{ip} buttons: {buttons}"))
 
-    # Keep the program running and update LED colors every second
     while True:
-        for ip, ctrl in controllers.items():
-            color = await generate_random_color()
-            print(f"Setting LED 0 on {ip} to RGB{color}")
-            await ctrl.set_leds([color])
-        await asyncio.sleep(1 / 60)
+        await asyncio.sleep(1)
+
+    # Keep the program running and update LED colors every second
+    # while True:
+    #     for ip, ctrl in controllers.items():
+    #         color = await generate_random_color()
+    #         print(f"Setting LED 0 on {ip} to RGB{color}")
+    #         await ctrl.set_leds([color])
+    #     await asyncio.sleep(1 / 60)
 
 
 if __name__ == "__main__":

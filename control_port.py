@@ -50,6 +50,10 @@ class ControllerState:
         msg = f"lcd:{x}:{y}:{text}\n".encode()
         await self._send(msg)
 
+    async def clear_lcd(self):
+        msg = f"lcd:clear\n".encode()
+        await self._send(msg)
+
     async def set_backlights(self, states):
         payload = ":".join(["1" if s else "0" for s in states])
         msg = f"backlight:{payload}\n".encode()
@@ -89,6 +93,7 @@ class ControllerState:
 
             try:
                 data = await self.loop.sock_recv(self._socket, 1024)
+                print(f"Received data: {data}")
                 if not data:  # Connection closed
                     self.disconnect()
                     continue

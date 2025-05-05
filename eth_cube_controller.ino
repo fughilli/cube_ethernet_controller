@@ -88,6 +88,15 @@ void show_boot_message() {
     lcd.print((buttons >> i) & 1);
   }
   lcd.print("]");
+  lcd.setCursor(0, 3);
+  lcd.print("IP: ");
+  lcd.print(config.local_ip[0]);
+  lcd.print(".");
+  lcd.print(config.local_ip[1]);
+  lcd.print(".");
+  lcd.print(config.local_ip[2]);
+  lcd.print(".");
+  lcd.print(config.local_ip[3]);
 }
 
 void setup() {
@@ -171,12 +180,12 @@ void loop() {
   }
   uint8_t state = pca.readButtons();
   if (state != last_button_state) {
-    Serial.print("{\"buttons\":[");
+    Serial2.print("{\"buttons\":[");
     for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
-      Serial.print((state >> i) & 1);
-      if (i < PCA9555::NUM_BUTTONS - 1) Serial.print(",");
+      Serial2.print((state >> i) & 1);
+      if (i < PCA9555::NUM_BUTTONS - 1) Serial2.print(",");
     }
-    Serial.println("]}");
+    Serial2.println("]}");
     last_button_state = state;
     show_boot_message();
   }
