@@ -104,18 +104,20 @@ async def main():
 
     # Keep the program running and update LED colors every second
     led_index = 0  # Restore LED cycling index
+    NUM_LEDS = 1  # Number of LEDs to cycle through
+    NUM_BUTTONS = 6  # Number of buttons to cycle through
     while True:
         tasks = []
         for ip, ctrl in controllers.items():
             color = await generate_random_color()
             # Cycle through all LEDs
-            led_states = [(0, 0, 0)] * 6
-            led_states[led_index % 6] = color  # Set the current LED in the cycle
+            led_states = [(0, 0, 0)] * NUM_LEDS  # Initialize all LEDs to off
+            led_states[led_index % NUM_LEDS] = color  # Set the current LED in the cycle
             tasks.append(ctrl.set_leds(led_states))
 
             # Only control backlight 4 due to hardware limitations
-            backlight_states = [0] * 6
-            backlight_states[4] = 1  # Always turn on only backlight 4
+            backlight_states = [0] * NUM_BUTTONS
+            backlight_states[led_index % NUM_BUTTONS] ^= 1  # Always turn on only backlight 4
             tasks.append(ctrl.set_backlights(backlight_states))
 
         await asyncio.gather(*tasks)  # Run LED/backlight updates concurrently
