@@ -61,6 +61,9 @@ CommandProcessor command_processor(commands);
 
 volatile bool button_int_flag = false;
 uint8_t last_button_state = 0;
+uint8_t debounced_button_state = 0;
+uint32_t last_button_change_times[PCA9555::NUM_BUTTONS] = {0};
+const uint32_t DEBOUNCE_DELAY = 50; // 50ms debounce delay
 
 // Debug/boot message state
 uint8_t boot_dip = 0;
@@ -179,15 +182,47 @@ void loop() {
     char value = Serial2.read();
     command_processor.process_char(value);
   }
+
   uint8_t state = pca.readButtons();
-  if (state != last_button_state) {
+  uint32_t current_time = millis();
+  bool state_changed = false;
+
+  // Check each button independently
+  for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
+    bool current_button = (state >> i) & 1;
+    bool last_button = (last_button_state >> i) & 1;
+    bool debounced_button = (debounced_button_state >> i) & 1;
+
+    // If button state changed, update its last change time
+    if (current_button != last_button) {
+      last_button_change_times[i] = current_time;
+    }
+
+    // If enough time has passed since last change, update the debounced state
+    if ((current_time - last_button_change_times[i]) >= DEBOUNCE_DELAY) {
+      if (current_button != debounced_button) {
+        // Update the specific bit in debounced_button_state
+        if (current_button) {
+          debounced_button_state |= (1 << i);
+        } else {
+          debounced_button_state &= ~(1 << i);
+        }
+        state_changed = true;
+      }
+    }
+  }
+
+  // Update last_button_state
+  last_button_state = state;
+
+  // Only send update if any button state changed
+  if (state_changed) {
     Serial2.print("{\"buttons\":[");
     for (uint8_t i = 0; i < PCA9555::NUM_BUTTONS; ++i) {
-      Serial2.print((state >> i) & 1);
+      Serial2.print((debounced_button_state >> i) & 1);
       if (i < PCA9555::NUM_BUTTONS - 1) Serial2.print(",");
     }
     Serial2.println("]}");
-    last_button_state = state;
     show_boot_message();
   }
 }
