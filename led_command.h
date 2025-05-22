@@ -5,11 +5,11 @@
 #include "base64.h"
 #include "command.h"
 
-__attribute__((packed)) struct RGBval {
+struct __attribute__((packed)) RGBval {
   uint8_t r, g, b;
 };
 
-__attribute__((packed)) struct LedControl {
+struct __attribute__((packed)) LedControl {
   uint16_t num_leds;
   RGBval data[];
 };

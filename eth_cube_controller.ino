@@ -1,33 +1,35 @@
 #include <FastLED.h>
+#include <LiquidCrystal_PCF8574.h>
 #include <SoftwareSerial.h>
+#include <Wire.h>
 
 #include <algorithm>
 #include <span>
 
+#include "backlight_command.h"
 #include "base64.h"
 #include "ch9120.h"
 #include "command.h"
 #include "config_command.h"
-#include "led_command.h"
-#include "reconf_command.h"
-#include "lcd_command.h"
-#include <Wire.h>
-#include <LiquidCrystal_PCF8574.h>
-#include "pca9555.h"
-#include "backlight_command.h"
 #include "enum_command.h"
+#include "lcd_command.h"
+#include "led_command.h"
+#include "noop_command.h"
+#include "pca9555.h"
+#include "reconf_command.h"
+#include "reset_command.h"
 
-const uint8_t INT_PIN = 2; // GP2 on RP2040
+const uint8_t INT_PIN = 2;  // GP2 on RP2040
 
 const CH9121Config default_config = {
     .gateway = {192, 168, 0, 1},
     .subnet_mask = {255, 255, 255, 0},
-    .local_ip = {192, 168, 0, 51}, // will be overwritten by DIP
+    .local_ip = {192, 168, 0, 51},  // will be overwritten by DIP
     .target_ip = {192, 168, 0, 1},
     .local_port = 51333,
     .target_port = 51334,
     .baud_rate = 921600,
-    .mode = 0x00, // TCP Server mode (was 0x02 for UDP)
+    .mode = 0x00,  // TCP Server mode (was 0x02 for UDP)
 };
 
 CH9121Config config = default_config;
@@ -56,23 +58,32 @@ LedCommand led_command(leds, NUM_PIXELS);
 ConfigCommand config_command(NUM_PIXELS);
 ReconfCommand reconf_command(ch9121);
 LcdCommand lcd_command(lcd, LCD_WIDTH, LCD_HEIGHT);
-Command* commands[] = {&led_command, &config_command, &reconf_command, &lcd_command, &backlight_command, &enum_command};
+ResetCommand reset_command;
+NoopCommand noop_command;
+Command* commands[] = {&led_command,   &config_command,    &reconf_command,
+                       &lcd_command,   &backlight_command, &enum_command,
+                       &reset_command, &noop_command};
 CommandProcessor command_processor(commands);
 
 volatile bool button_int_flag = false;
 uint8_t last_button_state = 0;
 uint8_t debounced_button_state = 0;
 uint32_t last_button_change_times[PCA9555::NUM_BUTTONS] = {0};
-const uint32_t DEBOUNCE_DELAY = 50; // 50ms debounce delay
+const uint32_t DEBOUNCE_DELAY = 50;  // 50ms debounce delay
 
 // Debug/boot message state
 uint8_t boot_dip = 0;
 uint16_t enum_count = 0;
 bool debug_message_enabled = true;
 
-void onButtonInt() {
-  button_int_flag = true;
-}
+// Heartbeat and watchdog timing
+const uint32_t HEARTBEAT_INTERVAL = 500;  // 500ms between heartbeats
+const uint32_t WATCHDOG_TIMEOUT = 5000;   // 2 second timeout
+uint32_t last_heartbeat = 0;
+uint32_t last_command_time = 0;
+bool heartbeat_armed = false;  // Flag to track if heartbeat is active
+
+void onButtonInt() { button_int_flag = true; }
 
 void show_boot_message() {
   if (!debug_message_enabled) {
@@ -138,7 +149,7 @@ void setup() {
   // Read DIP and set CH9121 IP
   boot_dip = pca.readDIP();
   config.local_ip[3] = 50 + (boot_dip & 0x0F);
-  ch9121 = CH9121(&Serial2, config, 19, 18); // re-init with new config
+  ch9121 = CH9121(&Serial2, config, 19, 18);  // re-init with new config
 
   Serial.print("DIP switch value: ");
   Serial.println(boot_dip);
@@ -147,9 +158,9 @@ void setup() {
 
   Serial.println("Starting CH9121 config...");
   ch9121.Begin();
-  delay(1000); // Give more time for hardware initialization
+  delay(1000);  // Give more time for hardware initialization
   ch9121.Configure();
-  delay(1000); // Give more time for configuration to take effect
+  delay(1000);  // Give more time for configuration to take effect
   Serial.println("Finished CH9121 config");
 
   // Clear LCD and show ready message
@@ -171,20 +182,47 @@ void setup() {
     Serial.print("Enumeration request received. Count: ");
     Serial.println(enum_count);
   };
-  lcd_command.on_clear = []() {
-    debug_message_enabled = false;
+  lcd_command.on_clear = []() { debug_message_enabled = false; };
+
+  noop_command.on_arm = []() {
+    if (!heartbeat_armed) {
+      heartbeat_armed = true;
+      Serial.println("Heartbeat mechanism armed");
+    }
   };
+
+  last_heartbeat = millis();
+  last_command_time = millis();
+  heartbeat_armed = false;  // Start with heartbeat disabled
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  uint32_t current_time = millis();
+
+  // Only check watchdog and send heartbeats if armed
+  if (heartbeat_armed) {
+    // Check for host command timeout
+    if (current_time - last_command_time >= WATCHDOG_TIMEOUT) {
+      Serial.println("Host command timeout - resetting");
+      rp2040.reboot();
+    }
+
+    // Send heartbeat
+    if (current_time - last_heartbeat >= HEARTBEAT_INTERVAL) {
+      Serial2.println("{\"type\":\"heartbeat\"}");
+      last_heartbeat = current_time;
+    }
+  }
+
+  // Process incoming commands
   if (Serial2.available()) {
     char value = Serial2.read();
     command_processor.process_char(value);
+    last_command_time =
+        current_time;  // Update last command time on any command
   }
 
   uint8_t state = pca.readButtons();
-  uint32_t current_time = millis();
   bool state_changed = false;
 
   // Check each button independently
