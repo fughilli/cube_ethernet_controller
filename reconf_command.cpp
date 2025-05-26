@@ -1,4 +1,5 @@
 #include "reconf_command.h"
+#include <string>
 
 bool ReconfCommand::parseIPAddress(const char* str, uint8_t* ip) {
   int values[4];
@@ -24,7 +25,7 @@ void ReconfCommand::process(std::string_view args) {
     return;
   }
 
-  std::string_view ip_str = args.substr(0, colon1);
+  std::string_view ip_sv = args.substr(0, colon1);
   args = args.substr(colon1 + 1);
 
   size_t colon2 = args.find(':');
@@ -38,13 +39,22 @@ void ReconfCommand::process(std::string_view args) {
   uint16_t new_port = atoi(port_str.data());
   uint8_t new_ip[4];
 
-  if (parseIPAddress(ip_str.data(), new_ip) && new_port > 0 &&
+  // Copy IP substring into a fixed buffer (max 15 chars for IPv4 plus NUL)
+  if (ip_sv.empty() || ip_sv.size() > 15) {
+    Serial.println("Invalid IP format");
+    return;
+  }
+  char ip_copy[16];
+  memcpy(ip_copy, ip_sv.data(), ip_sv.size());
+  ip_copy[ip_sv.size()] = '\0';
+
+  if (parseIPAddress(ip_copy, new_ip) && new_port > 0 &&
       new_port <= 65535) {
     // Reconfigure the CH9120 with new target IP and port
     ch9121_.Reconfigure(new_ip, new_port);
 
     Serial.print("Reconfigured to ");
-    Serial.print(ip_str.data());
+    Serial.print(ip_copy);
     Serial.print(":");
     Serial.println(new_port);
   } else {

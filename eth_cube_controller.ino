@@ -199,7 +199,7 @@ void setup() {
     Serial.println("\"");
   };
 
-  last_heartbeat = millis();
+ elast_heartbeat = millis();
   last_command_time = millis();
   heartbeat_armed = false;  // Start with heartbeat disabled
 

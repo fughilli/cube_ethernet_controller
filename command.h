@@ -34,7 +34,7 @@ class CommandProcessor {
 
  private:
   std::span<Command*> commands_;
-  std::array<char, 256> buffer_;
+  std::array<char, 4096> buffer_;
   size_t buffer_pos_ = 0;
 
   // Process a complete command line
