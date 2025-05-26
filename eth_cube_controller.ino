@@ -191,12 +191,74 @@ void setup() {
     }
   };
 
+  command_processor.on_command = [](std::string_view command_line) {
+    Serial.print("Received command: \"");
+    for (char c : command_line) {
+        Serial.write(c);
+    }
+    Serial.println("\"");
+  };
+
   last_heartbeat = millis();
   last_command_time = millis();
   heartbeat_armed = false;  // Start with heartbeat disabled
+
+  rp2040.wdt_begin(1000);  // 1000 ms timeout
+}
+
+void maybe_reset_sequence(uint8_t r_buttons) {
+  // Detect a sequence of:
+  // Holding buttons 0, 2 for 2 seconds
+  // Holding buttons 0, 2, 5 for 2 seconds
+  //
+  // If this sequence is detected, reset the controller.
+  static uint32_t sequence_state = 0;
+  static uint32_t sequence_start_time_ms = 0;
+
+  switch (sequence_state) {
+    case 0:
+      if (r_buttons == 0x05) {
+        sequence_state = 1;
+        sequence_start_time_ms = millis();
+        Serial.println("Sequence 1 started");
+      }
+      break;
+    case 1:
+      if (r_buttons != 0x05) {
+        sequence_state = 0;
+        Serial.println("Sequence 1 ended");
+      } else if (millis() - sequence_start_time_ms >= 2000) {
+        sequence_state = 2;
+        sequence_start_time_ms = millis();
+        Serial.println("Sequence 2 started");
+      }
+      break;
+    case 2:
+      if (r_buttons & 0x05 != 0x05) {
+        sequence_state = 0;
+        Serial.println("Sequence 2 ended");
+      } else if (r_buttons == 0x15) {
+        sequence_state = 3;
+        sequence_start_time_ms = millis();
+      }
+      break;
+    case 3:
+      if (r_buttons != 0x15) {
+        sequence_state = 0;
+        Serial.println("Sequence 3 ended");
+      } else if (millis() - sequence_start_time_ms >= 2000) {
+        Serial.println("Resetting controller via buttons");
+        rp2040.reboot();
+      }
+      break;
+  }
 }
 
 void loop() {
+  // Pet watchdog at beginning of loop to reduce likelihood of reset
+  // on first iteration.
+  rp2040.wdt_reset();
+
   uint32_t current_time = millis();
 
   // Only check watchdog and send heartbeats if armed
@@ -252,6 +314,8 @@ void loop() {
 
   // Update last_button_state
   last_button_state = state;
+
+  maybe_reset_sequence(debounced_button_state);
 
   // Only send update if any button state changed
   if (state_changed) {

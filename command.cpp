@@ -17,6 +17,11 @@ void CommandProcessor::process_char(char c) {
 }
 
 void CommandProcessor::process_command(std::string_view line) {
+  // Invoke the on_command callback if it's set
+  if (on_command) {
+    on_command(line);
+  }
+
   // Find matching command by checking prefix substring
   for (Command* cmd : commands_) {
     std::string_view cmd_prefix = cmd->prefix();

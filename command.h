@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>  // Required for std::function
 #include <span>
 #include <string_view>
 
@@ -27,6 +28,9 @@ class CommandProcessor {
 
   // Process a single character
   void process_char(char c);
+
+  // Callback for when a command is received
+  std::function<void(std::string_view command_line)> on_command;
 
  private:
   std::span<Command*> commands_;
