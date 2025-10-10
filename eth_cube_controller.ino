@@ -14,6 +14,8 @@
 #include "enum_command.h"
 #include "lcd_command.h"
 #include "led_command.h"
+#include "netconfig_command.h"
+#include "network_storage.h"
 #include "noop_command.h"
 #include "pca9555.h"
 #include "reconf_command.h"
@@ -21,18 +23,10 @@
 
 const uint8_t INT_PIN = 2;  // GP2 on RP2040
 
-const CH9121Config default_config = {
-    .gateway = {2, 0, 99, 189},
-    .subnet_mask = {255, 255, 0, 0},
-    .local_ip = {2, 0, 99, 151},  // will be overwritten by DIP
-    .target_ip = {2, 0, 99, 189},
-    .local_port = 51333,
-    .target_port = 51334,
-    .baud_rate = 921600,
-    .mode = 0x00,  // TCP Server mode (was 0x02 for UDP)
-};
+// Network storage for persistent configuration
+NetworkStorage network_storage;
 
-CH9121Config config = default_config;
+CH9121Config config;
 
 // Create CH9121 instance with pin numbers
 CH9121 ch9121(&Serial2, config, 19, 18);
@@ -60,9 +54,10 @@ ReconfCommand reconf_command(ch9121);
 LcdCommand lcd_command(lcd, LCD_WIDTH, LCD_HEIGHT);
 ResetCommand reset_command;
 NoopCommand noop_command;
-Command* commands[] = {&led_command,   &config_command,    &reconf_command,
-                       &lcd_command,   &backlight_command, &enum_command,
-                       &reset_command, &noop_command};
+NetConfigCommand netconfig_command(network_storage, ch9121);
+Command* commands[] = {&led_command,      &config_command, &reconf_command,
+                       &lcd_command,      &backlight_command, &enum_command,
+                       &reset_command,    &noop_command,   &netconfig_command};
 CommandProcessor command_processor(commands);
 
 volatile bool button_int_flag = false;
@@ -146,14 +141,37 @@ void setup() {
   // PCA9555 setup
   pca.begin();
 
-  // Read DIP and set CH9121 IP
+  // Initialize network storage and load configuration
+  network_storage.begin();
+  const NetworkConfig& net_config = network_storage.getConfig();
+
+  // Convert NetworkConfig to CH9121Config and apply DIP offset
   boot_dip = pca.readDIP();
-  config.local_ip[3] = 150 + (boot_dip & 0x0F);
+
+  memcpy(config.gateway, net_config.gateway, 4);
+  memcpy(config.subnet_mask, net_config.subnet_mask, 4);
+  memcpy(config.target_ip, net_config.target_ip, 4);
+
+  // Set local IP from base IP + DIP offset
+  memcpy(config.local_ip, net_config.base_ip, 4);
+  config.local_ip[3] = net_config.base_ip[3] + (boot_dip & 0x0F);
+
+  config.local_port = net_config.local_port;
+  config.target_port = net_config.target_port;
+  config.baud_rate = net_config.baud_rate;
+  config.mode = net_config.mode;
+
   ch9121 = CH9121(&Serial2, config, 19, 18);  // re-init with new config
 
   Serial.print("DIP switch value: ");
   Serial.println(boot_dip);
-  Serial.print("Setting IP to: 2.0.99.");
+  Serial.print("Setting IP to: ");
+  Serial.print(config.local_ip[0]);
+  Serial.print(".");
+  Serial.print(config.local_ip[1]);
+  Serial.print(".");
+  Serial.print(config.local_ip[2]);
+  Serial.print(".");
   Serial.println(config.local_ip[3]);
 
   Serial.println("Starting CH9121 config...");
