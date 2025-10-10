@@ -22,10 +22,10 @@
 const uint8_t INT_PIN = 2;  // GP2 on RP2040
 
 const CH9121Config default_config = {
-    .gateway = {192, 168, 0, 1},
-    .subnet_mask = {255, 255, 255, 0},
-    .local_ip = {192, 168, 0, 51},  // will be overwritten by DIP
-    .target_ip = {192, 168, 0, 1},
+    .gateway = {2, 0, 99, 189},
+    .subnet_mask = {255, 255, 0, 0},
+    .local_ip = {2, 0, 99, 151},  // will be overwritten by DIP
+    .target_ip = {2, 0, 99, 189},
     .local_port = 51333,
     .target_port = 51334,
     .baud_rate = 921600,
@@ -148,12 +148,12 @@ void setup() {
 
   // Read DIP and set CH9121 IP
   boot_dip = pca.readDIP();
-  config.local_ip[3] = 50 + (boot_dip & 0x0F);
+  config.local_ip[3] = 150 + (boot_dip & 0x0F);
   ch9121 = CH9121(&Serial2, config, 19, 18);  // re-init with new config
 
   Serial.print("DIP switch value: ");
   Serial.println(boot_dip);
-  Serial.print("Setting IP to: 192.168.0.");
+  Serial.print("Setting IP to: 2.0.99.");
   Serial.println(config.local_ip[3]);
 
   Serial.println("Starting CH9121 config...");
